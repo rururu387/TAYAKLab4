@@ -1,4 +1,5 @@
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -280,25 +281,30 @@ public class SyntaxAnalyzer {
     }
 
     public void call(String analyzed_file) throws IOException {
+        PrintWriter writer = new PrintWriter("log.csv", StandardCharsets.UTF_8);
+        writer.println("Cтек,Вход,Примечание");
         Path path = Paths.get(analyzed_file);
         String file_data = String.join("", Files.readAllLines(path));
         Stack<Symbol> stack = new Stack<>();
         stack.push(start_symbol);
         Symbol terminal = null;
         Symbol buffer = null;
+        String log_state;
         while (!stack.empty()) {
-
+           log_state = "\"" + print_symbol_stack(stack) + "\",\"" + file_data + "\"";
            terminal = get_terminal_from_str(file_data);
             if (terminal != null) {
                 if (stack.peek().isTerminal && stack.peek().equals(terminal)) {
                     stack.pop();
                     file_data = file_data.substring(terminal.value.length());
+                    writer.println(log_state);
                 }
                 else{
                     if (stack.peek().isTerminal &&  !stack.peek().equals(terminal)) {
-                        System.out.println(file_data + "->expected '" + stack.peek().value + "' " + print_symbol_stack(stack));
+                        log_state += ",\"" + "Ошибка (Несоответствие терминалов)\"";
+                        writer.println(log_state);
+                        System.out.println(file_data + "->expected '" + stack.peek().value + "' " + "Stack:" + print_symbol_stack(stack));
                         stack.pop();
-                        terminal = null;
                         continue;
                     }
                     Production matrix_cell = symbol_matrix.get(stack.peek()).get(terminal);
@@ -308,27 +314,37 @@ public class SyntaxAnalyzer {
                             if(pr.isEps())
                                 can_to_eps = true;
                         }
+                        log_state += ",\"Ошибка: ";
                         if(can_to_eps){
+                            log_state += "снимаем " + stack.peek().toString() + " со стека\"";
+                            writer.println(log_state);
                             stack.pop();
                         }else{
                             while(!synchro_set.get(stack.peek()).contains(terminal)) {
+                                log_state += "Удаляем со входного потока:" + terminal.value + "\"";
+                                writer.println(log_state);
                                 print_error(file_data, terminal.value, stack);
                                 file_data = file_data.substring(terminal.value.length());
                                 terminal = get_terminal_from_str(file_data);
+                                log_state = "\"" + print_symbol_stack(stack) + "\",\"" + file_data + "\",\"";
                             }
-                            continue;
                         }
                     } else {
                         if (matrix_cell.synchro_error)
                         {
                             if (stack.size() == 1) {
+                                log_state += ",\"Ошибка: Удаляем со входного потока " + terminal.value + "\"";
+                                writer.println(log_state);
                                 print_error(file_data, terminal.value, stack);
                                 file_data = file_data.substring(terminal.value.length());
                             } else {
+                                log_state += ",\"СинхроОшибка: снимаем " + stack.peek().toString() + " со стека\"";
+                                writer.println(log_state);
                                 print_error(file_data, terminal.value, stack);
                                 stack.pop();
                             }
                         } else { //все ок
+                            writer.println(log_state);
                             stack.pop();
                             if (!matrix_cell.isEps()) {
                                 ListIterator<Symbol> it = matrix_cell.symbolList.listIterator(matrix_cell.symbolList.size());
@@ -339,26 +355,28 @@ public class SyntaxAnalyzer {
                         }
                     }
                 }
-                terminal = null;
             } else { // terminal == null
                 if (file_data.length() > 0) {
+                    log_state += ",\"Ошибка:Неопознанный символ.Удаляем со входного потока " + file_data.substring(0, 1) + "\"";
                     print_error(file_data, file_data.substring(0, 1), stack);
                     file_data = file_data.substring(1);
                 }else{
+                    writer.println(log_state);
                     stack.pop();
                 }
             }
         }
+        writer.close();
     }
 
     private void print_error(String file, String top_file, Stack<Symbol> stack) {
-        System.out.println(file + "->Unexpected '" + top_file + "' " + print_symbol_stack(stack));
+        System.out.println(file + "->Unexpected '" + top_file + "' " +"Stack:" + print_symbol_stack(stack));
     }
 
     private String print_symbol_stack(Stack<Symbol> stack) {
         Stack<Symbol> printable = new Stack<>();
         printable.addAll(stack);
-        StringBuilder ret_val = new StringBuilder("Stack:");
+        StringBuilder ret_val = new StringBuilder();
         while (!printable.empty()) {
             ret_val.append(printable.pop());
         }
