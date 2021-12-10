@@ -21,6 +21,7 @@ public class SyntaxAnalyzer {
     Map<Symbol, Set<Symbol>> follows;
 
     Map<Symbol, Map<Symbol, Production>> symbol_matrix; //symbol_matrix.get(non_terminal).get(terminal) -> production
+    Map<Symbol, Set<Symbol>> synchro_set;
 
     public SyntaxAnalyzer(String filename) {
         grammars = new LinkedHashMap<>();
@@ -114,6 +115,7 @@ public class SyntaxAnalyzer {
         }
         fillFollow();
         fillMatrix();
+        fill_synchro();
     }
 
     public String grammarsToString() {
@@ -175,23 +177,23 @@ public class SyntaxAnalyzer {
             for (Production prod : production_set) {
                 for (int i = 0; i < prod.symbolList.size() - 1; i++) {
                     Symbol current_symbol = prod.symbolList.get(i);
-                    if (!current_symbol.isTerminal) {
-                        Symbol next_symbol = prod.symbolList.get(i + 1);
-                        if (!follows.containsKey(current_symbol)) {
-                            follows.put(current_symbol, new HashSet<>());
-                            if (current_symbol.equals(start_symbol))
-                                follows.get(current_symbol).add(eps);
-                        }
-                        Set<Symbol> next_symbol_firsts;
-                        next_symbol_firsts = new HashSet<>();
-                        if (next_symbol.isTerminal() && !next_symbol.equals(eps)) {
-                            next_symbol_firsts.add(next_symbol);
-                        } else {
-                            next_symbol_firsts.addAll(firsts.get(next_symbol));
-                            next_symbol_firsts.remove(eps);
-                        }
-                        follows.get(current_symbol).addAll(next_symbol_firsts);
+//                    if (!current_symbol.isTerminal) {
+                    Symbol next_symbol = prod.symbolList.get(i + 1);
+                    if (!follows.containsKey(current_symbol)) {
+                        follows.put(current_symbol, new HashSet<>());
+                        if (current_symbol.equals(start_symbol))
+                            follows.get(current_symbol).add(eps);
                     }
+                    Set<Symbol> next_symbol_firsts;
+                    next_symbol_firsts = new HashSet<>();
+                    if (next_symbol.isTerminal() && !next_symbol.equals(eps)) {
+                        next_symbol_firsts.add(next_symbol);
+                    } else {
+                        next_symbol_firsts.addAll(firsts.get(next_symbol));
+                        next_symbol_firsts.remove(eps);
+                    }
+                    follows.get(current_symbol).addAll(next_symbol_firsts);
+//                    }
                 }
             }
         }
@@ -206,26 +208,26 @@ public class SyntaxAnalyzer {
             for (Production prod : production_set) {
                 for (int i = 0; i < prod.symbolList.size(); i++) {
                     Symbol current_symbol = prod.symbolList.get(i);
-                    if (!current_symbol.isTerminal) {
-                        if (!follows.containsKey(current_symbol)) {
-                            follows.put(current_symbol, new HashSet<>());
-                            if (current_symbol.equals(start_symbol))
-                                follows.get(current_symbol).add(eps);
-                        }
-                        Set<Symbol> next_symbol_firsts = null;
-                        if (i != prod.symbolList.size() - 1) {
-                            Symbol next_symbol = prod.symbolList.get(i + 1);
-                            if (next_symbol.isTerminal()) {
-                                next_symbol_firsts = new HashSet<>();
-                                next_symbol_firsts.add(next_symbol);
-                            } else {
-                                next_symbol_firsts = firsts.get(next_symbol);
-                            }
-                        }
-                        if (i == prod.symbolList.size() - 1 || next_symbol_firsts.contains(eps)) {
-                            follows.get(current_symbol).addAll(follows.get(non_terminal));
+//                    if (!current_symbol.isTerminal) {
+                    if (!follows.containsKey(current_symbol)) {
+                        follows.put(current_symbol, new HashSet<>());
+                        if (current_symbol.equals(start_symbol))
+                            follows.get(current_symbol).add(eps);
+                    }
+                    Set<Symbol> next_symbol_firsts = null;
+                    if (i != prod.symbolList.size() - 1) {
+                        Symbol next_symbol = prod.symbolList.get(i + 1);
+                        if (next_symbol.isTerminal()) {
+                            next_symbol_firsts = new HashSet<>();
+                            next_symbol_firsts.add(next_symbol);
+                        } else {
+                            next_symbol_firsts = firsts.get(next_symbol);
                         }
                     }
+                    if (i == prod.symbolList.size() - 1 || next_symbol_firsts.contains(eps)) {
+                        follows.get(current_symbol).addAll(follows.get(non_terminal));
+                    }
+//                    }
                 }
             }
         }
@@ -255,7 +257,26 @@ public class SyntaxAnalyzer {
                 }
             }
         }
+    }
 
+    private void fill_synchro(){
+        synchro_set = new HashMap<>();
+        for(Symbol non_ter: non_terminal_alphabet){
+            synchro_set.put(non_ter, new HashSet<>());
+            synchro_set.get(non_ter).addAll(follows.get(non_ter));
+            synchro_set.get(non_ter).addAll(firsts.get(non_ter));
+        }
+    }
+
+    Symbol get_terminal_from_str(String str){
+        Symbol terminal = null;
+        for (Symbol symbol : terminal_alphabet) {
+            if (str.startsWith(symbol.value) && !symbol.value.equals("")) {
+                if (terminal == null || symbol.value.length() > terminal.value.length())
+                    terminal = symbol;
+            }
+        }
+        return terminal;
     }
 
     public void call(String analyzed_file) throws IOException {
@@ -264,24 +285,42 @@ public class SyntaxAnalyzer {
         Stack<Symbol> stack = new Stack<>();
         stack.push(start_symbol);
         Symbol terminal = null;
+        Symbol buffer = null;
         while (!stack.empty()) {
-            for (Symbol symbol : terminal_alphabet) {
-                if (file_data.startsWith(symbol.value) && !symbol.value.equals("")) {
-                    if (terminal == null || symbol.value.length() > terminal.value.length())
-                        terminal = symbol;
-                }
-            }
+
+           terminal = get_terminal_from_str(file_data);
             if (terminal != null) {
-                if (stack.peek().isTerminal) {
+                if (stack.peek().isTerminal && stack.peek().equals(terminal)) {
                     stack.pop();
                     file_data = file_data.substring(terminal.value.length());
-                } else {
+                }
+                else{
+                    if (stack.peek().isTerminal &&  !stack.peek().equals(terminal)) {
+                        System.out.println(file_data + "->expected '" + stack.peek().value + "' " + print_symbol_stack(stack));
+                        stack.pop();
+                        terminal = null;
+                        continue;
+                    }
                     Production matrix_cell = symbol_matrix.get(stack.peek()).get(terminal);
                     if (matrix_cell == null) {
-                        print_error(file_data, terminal.value, stack);
-                        file_data = file_data.substring(terminal.value.length());
+                        boolean can_to_eps = false;
+                        for(Production pr: grammars.get(stack.peek())){
+                            if(pr.isEps())
+                                can_to_eps = true;
+                        }
+                        if(can_to_eps){
+                            stack.pop();
+                        }else{
+                            while(!synchro_set.get(stack.peek()).contains(terminal)) {
+                                print_error(file_data, terminal.value, stack);
+                                file_data = file_data.substring(terminal.value.length());
+                                terminal = get_terminal_from_str(file_data);
+                            }
+                            continue;
+                        }
                     } else {
-                        if (matrix_cell.synchro_error) {
+                        if (matrix_cell.synchro_error)
+                        {
                             if (stack.size() == 1) {
                                 print_error(file_data, terminal.value, stack);
                                 file_data = file_data.substring(terminal.value.length());
@@ -289,7 +328,7 @@ public class SyntaxAnalyzer {
                                 print_error(file_data, terminal.value, stack);
                                 stack.pop();
                             }
-                        } else {
+                        } else { //все ок
                             stack.pop();
                             if (!matrix_cell.isEps()) {
                                 ListIterator<Symbol> it = matrix_cell.symbolList.listIterator(matrix_cell.symbolList.size());
@@ -301,9 +340,9 @@ public class SyntaxAnalyzer {
                     }
                 }
                 terminal = null;
-            } else {
-                if(file_data.length()>0) {
-                    print_error(file_data, file_data.substring(0,1), stack);
+            } else { // terminal == null
+                if (file_data.length() > 0) {
+                    print_error(file_data, file_data.substring(0, 1), stack);
                     file_data = file_data.substring(1);
                 }else{
                     stack.pop();
@@ -312,15 +351,15 @@ public class SyntaxAnalyzer {
         }
     }
 
-    private void print_error(String file,String top_file,Stack<Symbol> stack){
-        System.out.println(file  + "->Unexpected '" + top_file + "' "+ print_symbol_stack(stack));
+    private void print_error(String file, String top_file, Stack<Symbol> stack) {
+        System.out.println(file + "->Unexpected '" + top_file + "' " + print_symbol_stack(stack));
     }
 
-    private String print_symbol_stack(Stack<Symbol> stack){
+    private String print_symbol_stack(Stack<Symbol> stack) {
         Stack<Symbol> printable = new Stack<>();
         printable.addAll(stack);
-        StringBuilder ret_val = new StringBuilder("Stack: ");
-        while (!printable.empty()){
+        StringBuilder ret_val = new StringBuilder("Stack:");
+        while (!printable.empty()) {
             ret_val.append(printable.pop());
         }
         return ret_val.toString();

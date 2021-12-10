@@ -1,3 +1,5 @@
-int main() {
-int a = 5 ;
+int main( ) {
+if ( abfbddsfsf < dfjssvnnsvkdsv ){
+ int b = 453;
+}
 }
