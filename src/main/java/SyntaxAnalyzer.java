@@ -22,7 +22,7 @@ public class SyntaxAnalyzer {
     Map<Symbol, Set<Symbol>> follows;
 
     Map<Symbol, Map<Symbol, Production>> symbol_matrix; //symbol_matrix.get(non_terminal).get(terminal) -> production
-    Map<Symbol, Set<Symbol>> synchro_set;
+    Map<Symbol, Set<Symbol>> synchro_map;
 
     public SyntaxAnalyzer(String filename) {
         grammars = new LinkedHashMap<>();
@@ -261,11 +261,11 @@ public class SyntaxAnalyzer {
     }
 
     private void fill_synchro(){
-        synchro_set = new HashMap<>();
+        synchro_map = new HashMap<>();
         for(Symbol non_ter: non_terminal_alphabet){
-            synchro_set.put(non_ter, new HashSet<>());
-            synchro_set.get(non_ter).addAll(follows.get(non_ter));
-            synchro_set.get(non_ter).addAll(firsts.get(non_ter));
+            synchro_map.put(non_ter, new HashSet<>());
+            synchro_map.get(non_ter).addAll(follows.get(non_ter));
+            synchro_map.get(non_ter).addAll(firsts.get(non_ter));
         }
     }
 
@@ -288,7 +288,6 @@ public class SyntaxAnalyzer {
         Stack<Symbol> stack = new Stack<>();
         stack.push(start_symbol);
         Symbol terminal = null;
-        Symbol buffer = null;
         String log_state;
         while (!stack.empty()) {
            log_state = "\"" + print_symbol_stack(stack) + "\",\"" + file_data + "\"";
@@ -320,7 +319,7 @@ public class SyntaxAnalyzer {
                             writer.println(log_state);
                             stack.pop();
                         }else{
-                            while(!synchro_set.get(stack.peek()).contains(terminal)) {
+                            while(!synchro_map.get(stack.peek()).contains(terminal)) {
                                 log_state += "Удаляем со входного потока:" + terminal.value + "\"";
                                 writer.println(log_state);
                                 print_error(file_data, terminal.value, stack);
@@ -358,6 +357,7 @@ public class SyntaxAnalyzer {
             } else { // terminal == null
                 if (file_data.length() > 0) {
                     log_state += ",\"Ошибка:Неопознанный символ.Удаляем со входного потока " + file_data.substring(0, 1) + "\"";
+                    writer.println(log_state);
                     print_error(file_data, file_data.substring(0, 1), stack);
                     file_data = file_data.substring(1);
                 }else{
